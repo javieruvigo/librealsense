@@ -2,12 +2,15 @@
 // Copyright(c) 2017 Intel Corporation. All Rights Reserved.
 
 #include "playback_sensor.h"
+#include "playback_device.h"
 #include "core/motion.h"
 #include <map>
 #include "types.h"
-#include "context.h"
-#include "ds5/ds5-options.h"
+#include "ds/d400/d400-options.h"
 #include "media/ros/ros_reader.h"
+
+#include <rsutils/string/from.h>
+
 
 using namespace librealsense;
 
@@ -78,7 +81,8 @@ void playback_sensor::open(const stream_profiles& requests)
             std::end(m_available_profiles),
             [r](const std::shared_ptr<stream_profile_interface>& s) { return r->get_unique_id() == s->get_unique_id(); }) == std::end(m_available_profiles))
         {
-            throw std::runtime_error(to_string() << "Failed to open sensor, requested profile: " << profile_to_string(r) << " is not available");
+            throw std::runtime_error( rsutils::string::from() << "Failed to open sensor, requested profile: "
+                                                              << profile_to_string( r ) << " is not available" );
         }
     }
     std::vector<device_serializer::stream_identifier> opened_streams;
@@ -99,7 +103,8 @@ void playback_sensor::open(const stream_profiles& requests)
         opened_streams.push_back(f);
     }
     set_active_streams(requests);
-    opened(opened_streams);
+    if( _on_opened )
+        _on_opened( opened_streams );
 }
 
 void playback_sensor::close()
@@ -120,22 +125,23 @@ void playback_sensor::close()
     }
     m_dispatchers.clear();
     set_active_streams({});
-    closed(closed_streams);
+    if( _on_closed )
+        _on_closed( closed_streams );
 }
 
-void playback_sensor::register_notifications_callback(notifications_callback_ptr callback)
+void playback_sensor::register_notifications_callback( rs2_notifications_callback_sptr callback )
 {
     LOG_DEBUG("register_notifications_callback for sensor " << m_sensor_id);
     _notifications_processor.set_callback(std::move(callback));
 }
 
-notifications_callback_ptr playback_sensor::get_notifications_callback() const
+rs2_notifications_callback_sptr playback_sensor::get_notifications_callback() const
 {
     return _notifications_processor.get_callback();
 }
 
 
-void playback_sensor::start(frame_callback_ptr callback)
+void playback_sensor::start( rs2_frame_callback_sptr callback )
 {
     LOG_DEBUG("Start sensor " << m_sensor_id);
     bool was_started = false;
@@ -148,8 +154,8 @@ void playback_sensor::start(frame_callback_ptr callback)
             m_user_callback = callback;
         }
     }
-    if(was_started)
-        started(m_sensor_id, callback);
+    if( was_started && _on_started )
+        _on_started( m_sensor_id, callback );
 }
 
 void playback_sensor::stop(bool invoke_required)
@@ -171,8 +177,8 @@ void playback_sensor::stop(bool invoke_required)
         }
     }
 
-    if(was_stopped)
-        stopped(m_sensor_id, invoke_required);
+    if( was_stopped && _on_stopped )
+        _on_stopped( m_sensor_id, invoke_required );
 
 }
 void playback_sensor::stop()
@@ -292,11 +298,11 @@ void playback_sensor::update(const device_serializer::sensor_snapshot& sensor_sn
     register_sensor_options(sensor_snapshot);
 }
 
-frame_callback_ptr playback_sensor::get_frames_callback() const
+rs2_frame_callback_sptr playback_sensor::get_frames_callback() const
 {
     return m_user_callback;
 }
-void playback_sensor::set_frames_callback(frame_callback_ptr callback)
+void playback_sensor::set_frames_callback( rs2_frame_callback_sptr callback )
 {
     m_user_callback = callback;
 }

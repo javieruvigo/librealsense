@@ -22,9 +22,12 @@ if not os.path.isdir( build ):
     #
     build = os.path.join( root, 'build' )
     if not os.path.isdir( build ):
-        log.w( 'repo.build directory wasn\'t found' )
-        log.d( 'repo.root=', root )
-        build = None
+        # Under GHA, we use a build directory under this env variable:
+        build = os.environ.get( 'WIN_BUILD_DIR' )
+        if not build or not os.path.isdir( build ):
+            log.w( 'repo.build directory wasn\'t found' )
+            log.d( 'repo.root=', root )
+            build = None
 
 
 def find_pyrs():
@@ -53,33 +56,6 @@ def find_pyrs_dir():
         return pyrs_dir
 
 
-def pretty_fw_version( fw_version_as_string ):
-    """
-    :return: a version with leading zeros removed, so as to be a little easier to read
-    """
-    return '.'.join( [str(int(c)) for c in fw_version_as_string.split( '.' )] )
-
-
-def compare_fw_versions( v1, v2 ):
-    """
-    :param v1: left FW version
-    :param v2: right FW version
-    :return: 1 if v1 > v2; -1 is v1 < v2; 0 if they're equal
-    """
-    v1_list = v1.split( '.' )
-    v2_list = v2.split( '.' )
-    if len(v1_list) != 4:
-        raise RuntimeError( "FW version (left) '" + v1 + "' is invalid" )
-    if len(v2_list) != 4:
-        raise RuntimeError( "FW version (right) '" + v2 + "' is invalid" )
-    for n1, n2 in zip( v1_list, v2_list ):
-        if int(n1) > int(n2):
-            return 1
-        if int(n1) < int(n2):
-            return -1
-    return 0
-
-
 def find_built_exe( source, name ):
     """
     Find an executable that was built in the repo
@@ -88,21 +64,18 @@ def find_built_exe( source, name ):
     :param name: The name of the exe, without any platform-specific extensions like .exe
     :return: The full path, or None, of the exe
     """
-    exe = None
+    if platform.system() != 'Linux':
+        name += '.exe'
+    import sys
+    for p in sys.path:
+        exe = os.path.join( p, name )
+        if os.path.isfile( exe ):
+            return exe
     if platform.system() == 'Linux':
+        # The Linux build leaves all the executables in their source dir
         global build
         exe = os.path.join( build, source, name )
-        if not os.path.isfile( exe ):
-            return None
-    else:
-        # In Windows, the name will be without extension and we need to find it somewhere
-        # in the path
-        import sys
-        for p in sys.path:
-            exe = os.path.join( p, name + '.exe' )
-            if os.path.isfile( exe ):
-                break
-        else:
-            return None
-    return exe
+        if os.path.isfile( exe ):
+            return exe
+    return None
 

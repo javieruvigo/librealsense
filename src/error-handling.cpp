@@ -1,6 +1,11 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2019 Intel Corporation. All Rights Reserved.
+
 #include "error-handling.h"
+#include "core/notification.h"
+#include "librealsense-exception.h"
+
+#include <rsutils/string/from.h>
 
 #include <memory>
 
@@ -74,10 +79,10 @@ namespace librealsense
                         // the error polling loop to stop
                         if( reseted_val != 0 )
                         {
-                            std::string error_str
-                                = to_string() << "Error polling loop is not behaving as expected! "
-                                                 "expecting value : 0 got : "
-                                              << std::to_string( val ) << "\nShutting down error polling loop";
+                            std::string error_str = rsutils::string::from()
+                                                 << "Error polling loop is not behaving as expected! "
+                                                    "expecting value : 0 got : "
+                                                 << std::to_string( val ) << "\nShutting down error polling loop";
                             LOG_ERROR( error_str );
                             notification postcondition_failed{
                                 RS2_NOTIFICATION_CATEGORY_HARDWARE_ERROR,
@@ -104,4 +109,59 @@ namespace librealsense
             LOG_DEBUG( "Notification polling loop is being shut-down" );
         }
     }
+
+    polling_errors_disable::~polling_errors_disable()
+    {
+        if( auto handler = _polling_error_handler.lock() )
+            handler->stop();
+    }
+
+    void polling_errors_disable::set( float value )
+    {
+        if( value < 0 )
+            throw invalid_value_exception( "invalid polling errors value " + std::to_string( value ) );
+
+        if( auto handler = _polling_error_handler.lock() )
+        {
+            _value = value;
+            if( value <= std::numeric_limits< float >::epsilon() )
+                handler->stop();
+            else
+                handler->start( (unsigned int) (value * 1000.f) );
+        }
+        _recording_function( *this );
+    }
+
+    float polling_errors_disable::query() const
+    {
+        return _value;
+    }
+
+    option_range polling_errors_disable::get_range() const
+    {
+        return option_range{ 0, 1, 1, 0 };
+    }
+
+    bool polling_errors_disable::is_enabled() const
+    {
+        return true;
+    }
+
+    const char * polling_errors_disable::get_description() const
+    {
+        return "Enable / disable polling of camera internal errors";
+    }
+
+    const char * polling_errors_disable::get_value_description( float value ) const
+    {
+        if( value == 0 )
+        {
+            return "Disabled";
+        }
+        else
+        {
+            return "Enabled";
+        }
+    }
+
 }  // namespace librealsense

@@ -2,7 +2,9 @@
 // Copyright(c) 2021 Intel Corporation. All Rights Reserved.
 
 #include "serialized-utilities.h"
+#include <rsutils/string/from.h>
 #include <device.h>
+#include <src/firmware-version.h>
 
 namespace librealsense {
 namespace serialized_utilities {
@@ -105,9 +107,9 @@ bool json_preset_reader::init_schema()
         _schema_version = schema_version_it;
         if (_schema_version != SCHEMA_VERSION)
         {
-            throw librealsense::invalid_value_exception(to_string() << "mismatch on schema version, expecting: "
-                << SCHEMA_VERSION
-                << " got: " << _schema_version);
+            throw librealsense::invalid_value_exception( rsutils::string::from()
+                                                         << "mismatch on schema version, expecting: " << SCHEMA_VERSION
+                                                         << " got: " << _schema_version );
         }
 
         schema_version_found = true;

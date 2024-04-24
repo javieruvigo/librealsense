@@ -4,7 +4,8 @@
 #pragma once
 
 #include "backend.h"
-#include <librealsense2/utilities/concurrency/concurrency.h>
+#include "platform/device-watcher.h"
+#include <rsutils/concurrency/concurrency.h>
 #include "callback-invocation.h"
 
 

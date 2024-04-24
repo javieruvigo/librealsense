@@ -1,11 +1,13 @@
 /* License: Apache 2.0. See LICENSE file in root directory.
 Copyright(c) 2017 Intel Corporation. All Rights Reserved. */
 
-#include "python.hpp"
+#include "pyrealsense2.h"
 #include <librealsense2/hpp/rs_internal.hpp>
 #include <librealsense2/hpp/rs_device.hpp>
 #include <librealsense2/hpp/rs_record_playback.hpp> // for downcasts
-#include <../common/metadata-helper.h>
+#include <common/metadata-helper.h>
+
+#include <iostream>
 
 void init_device(py::module &m) {
     /** rs_device.hpp **/
@@ -27,10 +29,10 @@ void init_device(py::module &m) {
         .def(py::init<>())
         .def("__nonzero__", &rs2::device::operator bool) // Called to implement truth value testing in Python 2
         .def("__bool__", &rs2::device::operator bool) // Called to implement truth value testing in Python 3
+        .def( "is_connected", &rs2::device::is_connected )
         .def(BIND_DOWNCAST(device, debug_protocol))
         .def(BIND_DOWNCAST(device, playback))
         .def(BIND_DOWNCAST(device, recorder))
-        .def(BIND_DOWNCAST(device, tm2))
         .def(BIND_DOWNCAST(device, updatable))
         .def(BIND_DOWNCAST(device, update_device))
         .def(BIND_DOWNCAST(device, auto_calibrated_device))
@@ -39,7 +41,10 @@ void init_device(py::module &m) {
         .def(BIND_DOWNCAST(device, firmware_logger))
         .def("__repr__", [](const rs2::device &self) {
             std::ostringstream ss;
-            ss << "<" SNAME ".device: " << self.get_info(RS2_CAMERA_INFO_NAME);
+            auto name = self.get_info( RS2_CAMERA_INFO_NAME );
+            if( 0 == strncmp( name, "Intel RealSense ", 16 ) )
+                name += 16;
+            ss << "<" SNAME ".device: " << name;
             if (self.supports(RS2_CAMERA_INFO_SERIAL_NUMBER))
                 ss << " (S/N: " << self.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
             else
@@ -51,6 +56,8 @@ void init_device(py::module &m) {
                 ss << "  UNLOCKED";
             if( self.supports( RS2_CAMERA_INFO_USB_TYPE_DESCRIPTOR ) )
                 ss << "  on USB" << self.get_info( RS2_CAMERA_INFO_USB_TYPE_DESCRIPTOR );
+            else if( self.supports( RS2_CAMERA_INFO_PHYSICAL_PORT ) )
+                ss << "  @ " << self.get_info( RS2_CAMERA_INFO_PHYSICAL_PORT );
             ss << ")>";
             return ss.str();
         })
@@ -274,22 +281,6 @@ void init_device(py::module &m) {
         })
         .def("front", &rs2::device_list::front) // No docstring in C++
         .def("back", &rs2::device_list::back); // No docstring in C++
-
-    py::class_<rs2::tm2, rs2::device> tm2(m, "tm2", "The tm2 class is an interface for T2XX devices, such as T265.\n"
-                                                    "For T265, it provides RS2_STREAM_FISHEYE(2), RS2_STREAM_GYRO, "
-                                                    "RS2_STREAM_ACCEL, and RS2_STREAM_POSE streams, and contains the following sensors:\n"
-                                                    "-pose_sensor: map and relocalization functions.\n"
-                                                    "-wheel_odometer: input for odometry data.");
-    tm2.def(py::init<rs2::device>(), "device"_a)
-        .def("enable_loopback", &rs2::tm2::enable_loopback, "Enter the given device into "
-             "loopback operation mode that uses the given file as input for raw data", "filename"_a)
-        .def("disable_loopback", &rs2::tm2::disable_loopback, "Restores the given device into normal operation mode")
-        .def("is_loopback_enabled", &rs2::tm2::is_loopback_enabled, "Checks if the device is in loopback mode or not")
-        .def("set_intrinsics", &rs2::tm2::set_intrinsics, "Set camera intrinsics", "sensor_id"_a, "intrinsics"_a)
-        .def("set_extrinsics", &rs2::tm2::set_extrinsics, "Set camera extrinsics", "from_stream"_a, "from_id"_a, "to_stream"_a, "to_id"_a, "extrinsics"_a)
-        .def("set_motion_device_intrinsics", &rs2::tm2::set_motion_device_intrinsics, "Set motion device intrinsics", "stream_type"_a, "motion_intrinsics"_a)
-        .def("reset_to_factory_calibration", &rs2::tm2::reset_to_factory_calibration, "Reset to factory calibration")
-        .def("write_calibration", &rs2::tm2::write_calibration, "Write calibration to device's EEPROM");
 
     /** end rs_device.hpp **/
 }

@@ -3,33 +3,35 @@
 
 # we want this test to run first so that all tests run with updated FW versions, so we give it priority 0
 #test:priority 0
-#test:device each(D400*) !D457
-#test:device each(L500*)
+#test:donotrun:gha
+#test:device each(D400*)
 
-import pyrealsense2 as rs, sys, os, subprocess
+import sys
 import os
 import subprocess
 import re
 import platform
 import pyrealsense2 as rs
+import pyrsutils as rsutils
 from rspy import devices, log, test, file, repo
-import re, platform
+import time
 
+# This is the first test running, discover acroname modules.
+# Not relevant to MIPI devices running on jetson for LibCI
+if 'jetson' not in test.context:
+    if not devices.hub:
+        log.i( "No hub library found; skipping device FW update" )
+        sys.exit(0)
+    # Following will throw if no acroname module is found
+    from rspy import device_hub
 
-if not devices.acroname:
-    log.i( "No Acroname library found; skipping device FW update" )
-    sys.exit(0)
-# Following will throw if no acroname module is found
-from rspy import acroname
-try:
-    devices.acroname.discover()
-except acroname.NoneFoundError as e:
-    log.f( e )
-# Remove acroname -- we're likely running inside run-unit-tests in which case the
-# acroname hub is likely already connected-to from there and we'll get an error
-# thrown ('failed to connect to acroname (result=11)'). We do not need it -- just
-# needed to verify it is available above...
-devices.acroname = None
+    if device_hub.create() is None:
+        log.f("No hub found")
+    # Remove acroname -- we're likely running inside run-unit-tests in which case the
+    # acroname hub is likely already connected-to from there and we'll get an error
+    # thrown ('failed to connect to acroname (result=11)'). We do not need it -- just
+    # needed to verify it is available above...
+    devices.hub = None
 
 
 def send_hardware_monitor_command(device, command):
@@ -45,9 +47,7 @@ def get_update_counter(device):
     start_index = 0x30
     size = None
 
-    if product_line == "L500":
-        size = 0x1
-    elif product_line == "D400":
+    if product_line == "D400":
         size = 0x2
     else:
         log.f( "Incompatible product line:", product_line )
@@ -60,12 +60,7 @@ def get_update_counter(device):
 def reset_update_counter( device ):
     product_line = device.get_info( rs.camera_info.product_line )
 
-    if product_line == "L500":
-        opcode = 0x0A
-        start_index = 0x30
-        size = 0x01
-        raw_cmd = rs.debug_protocol(device).build_command(opcode, start_index, size)
-    elif product_line == "D400":
+    if product_line == "D400":
         opcode = 0x86
         raw_cmd = rs.debug_protocol(device).build_command(opcode)
     else:
@@ -142,9 +137,7 @@ recovered = False
 if device.is_update_device():
     log.d( "recovering device ..." )
     try:
-        # TODO: this needs to improve for L535
         image_file = find_image_or_exit( product_name )
-
         cmd = [fw_updater_exe, '-r', '-f', image_file]
         log.d( 'running:', cmd )
         subprocess.run( cmd )
@@ -156,12 +149,12 @@ if device.is_update_device():
         devices.query( monitor_changes = False )
         device = devices.get_first( devices.all() ).handle
 
-current_fw_version = repo.pretty_fw_version( device.get_info( rs.camera_info.firmware_version ))
+current_fw_version = rsutils.version( device.get_info( rs.camera_info.firmware_version ))
 log.d( 'FW version:', current_fw_version )
-bundled_fw_version = repo.pretty_fw_version( device.get_info( rs.camera_info.recommended_firmware_version ) )
+bundled_fw_version = rsutils.version( device.get_info( rs.camera_info.recommended_firmware_version ) )
 log.d( 'bundled FW version:', bundled_fw_version )
 
-if repo.compare_fw_versions( current_fw_version, bundled_fw_version ) == 0:
+if current_fw_version == bundled_fw_version:
     # Current is same as bundled
     if recovered or 'nightly' not in test.context:
         # In nightly, we always update; otherwise we try to save time, so do not do anything!
@@ -170,7 +163,7 @@ if repo.compare_fw_versions( current_fw_version, bundled_fw_version ) == 0:
         test.print_results_and_exit()
 else:
     # It is expected that, post-recovery, the FW versions will be the same
-    test.check( not recovered, abort_if_failed = True )
+    test.check( not recovered, on_fail=test.ABORT )
 
 update_counter = get_update_counter( device )
 log.d( 'update counter:', update_counter )
@@ -179,7 +172,11 @@ if update_counter >= 19:
     reset_update_counter( device )
     update_counter = 0
 
-image_file = find_image_or_exit(product_name, re.escape( bundled_fw_version ))
+fw_version_regex = bundled_fw_version.to_string()
+if not bundled_fw_version.build():
+    fw_version_regex += ".0"  # version drops the build if 0
+fw_version_regex = re.escape( fw_version_regex )
+image_file = find_image_or_exit(product_name, fw_version_regex)
 # finding file containing image for FW update
 
 cmd = [fw_updater_exe, '-f', image_file]
@@ -188,10 +185,11 @@ sys.stdout.flush()
 subprocess.run( cmd )   # may throw
 
 # make sure update worked
+time.sleep(3) # MIPI devices do not re-enumerate so we need to give them some time to restart
 devices.query( monitor_changes = False )
 sn_list = devices.all()
 device = devices.get_first( sn_list ).handle
-current_fw_version = repo.pretty_fw_version( device.get_info( rs.camera_info.firmware_version ))
+current_fw_version = rsutils.version( device.get_info( rs.camera_info.firmware_version ))
 test.check_equal( current_fw_version, bundled_fw_version )
 new_update_counter = get_update_counter( device )
 # According to FW: "update counter zeros if you load newer FW than (ever) before"

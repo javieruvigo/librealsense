@@ -1,6 +1,6 @@
 # License: Apache 2.0. See LICENSE file in root directory.
 # Copyright(c) 2019 Intel Corporation. All Rights Reserved.
-target_sources(${LRS_TARGET}
+target_sources( ${PROJECT_NAME}
     PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/librealsense2/rs.hpp"
         "${CMAKE_CURRENT_LIST_DIR}/librealsense2/rs.h"
@@ -34,7 +34,6 @@ target_sources(${LRS_TARGET}
         "${CMAKE_CURRENT_LIST_DIR}/librealsense2/rsutil.h"
         "${CMAKE_CURRENT_LIST_DIR}/librealsense2/rs_advanced_mode.h"
         "${CMAKE_CURRENT_LIST_DIR}/librealsense2/rs_advanced_mode.hpp"
-        
+
 )
 
-include(${CMAKE_CURRENT_LIST_DIR}/librealsense2/utilities/CMakeLists.txt)

@@ -1,7 +1,17 @@
 # License: Apache 2.0. See LICENSE file in root directory.
 # Copyright(c) 2021 Intel Corporation. All Rights Reserved.
 
-import sys
+import sys, os
+
+# Set this string to show a "nesting" idetifier that can be used to distinguish output
+# from this process from others...
+nested = None
+
+
+# We're usually the first to be imported, and so the first see the original arguments as passed
+# into sys.argv... remember them before we change:
+# (NOTE: sys.orig_argv is available as of 3.10)
+original_args = sys.argv[1:]
 
 
 def _write( s ):
@@ -29,9 +39,25 @@ def _stream_has_color( stream ):
         # guess false in case of error
         return False
 
-_have_color = '--color' in sys.argv
-if _have_color:
+
+def find_flag( arg ):
+    for x in range( 1, len(sys.argv) ):
+        a = sys.argv[x]
+        if a == arg:
+            return x
+        if a == '--':
+            break
+    return None
+
+
+_have_no_color = False
+if find_flag( '--color' ):
     sys.argv.remove( '--color' )
+    _have_color = True
+elif find_flag( '--no-color' ):
+    sys.argv.remove( '--no-color' )
+    _have_color = False
+    _have_no_color = True
 else:
     _have_color = _stream_has_color( sys.stdout )
 if _have_color:
@@ -48,35 +74,43 @@ if _have_color:
         s = indent( sep.join( [str(s) for s in args] ), line_prefix )
         if color:
             s = color + s + reset
-        _write( s )
-        clear_to_eol = len(_progress) > 0  and  end  and  end[-1] == '\n'
-        if clear_to_eol:
-            sys.stdout.write( clear_eol + end )
-            progress( *_progress )
+        if end:
+            clear_to_eol = len(_progress) > 0  and  end[-1] == '\n'
+            if clear_to_eol:
+                _write( s + clear_eol + end )
+                progress( *_progress )
+            else:
+                _write( s + end )
         else:
-            if end:
-                sys.stdout.write( end )
+            _write( s )
     def progress(*args):
         global _progress
         sys.stdout.flush()
         sys.stdout.write( '\0337' )  # save cursor
         print( *args, end = clear_eol )
         sys.stdout.write( '\0338' )  # restore cursor
+        sys.stdout.flush()
         _progress = args
 else:
     red = yellow = gray = reset = cr = clear_eos = ''
     def out( *args, sep = ' ', end = '\n', line_prefix = None, color = None ):
         s = indent( sep.join( [str(s) for s in args] ), line_prefix )
-        _write( s )
         if end:
-            sys.stdout.write( end )
+            _write( s + end )
+        else:
+            _write( s )
     def progress(*args):
         if args:
             print( *args )
+        sys.stdout.flush()
 
 def is_color_on():
     global _have_color
     return _have_color
+
+def is_color_disabled():
+    global _have_no_color
+    return _have_no_color
 
 
 def quiet_on():
@@ -86,6 +120,9 @@ def quiet_on():
 
 
 def indent( str, line_prefix = '    ' ):
+    global nested
+    if nested:
+        line_prefix = '[' + nested + '] ' + ( line_prefix or '' )
     if line_prefix:
         str = line_prefix + str.replace( '\n', '\n' + line_prefix )
     return str
@@ -120,7 +157,7 @@ def debug_on():
 def is_debug_on():
     global _debug_on
     return _debug_on
-if '--debug' in sys.argv:
+if find_flag( '--debug' ):
     sys.argv.remove( '--debug' )
     debug_on()
 def debug_indent( n = 1, indentation = '    ' ):
@@ -136,7 +173,7 @@ def i( *args ):
 
 
 def f( *args ):
-    out( '-F-', *args )
+    out( *args, line_prefix = red + '-F-' + reset + ' ' )
     sys.exit(1)
 
 
@@ -172,4 +209,18 @@ def n_warnings():
 def reset_warnings():
     global _n_warnings
     _n_warnings = 0
+
+
+def split():
+    """
+    Output an easy-to-distinguish line separating text above from below.
+    Currently a line of "_____"
+    """
+    try:
+        screen_width = os.get_terminal_size().columns
+    except:
+        # this happens under github actions, for example, or when a terminal does not exist
+        screen_width = 60
+    out()
+    out( '_' * screen_width )
 

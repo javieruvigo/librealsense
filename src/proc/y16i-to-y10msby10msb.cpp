@@ -11,11 +11,16 @@
 namespace librealsense
 {
     struct y16i_pixel { uint16_t left : 16, right : 16;
-                        // left and right data are shifted 6 times so that the MSB 10 bit will hold the data
-                        // data should be in MSB because OpenGL then uses the MSB byte
-                        uint16_t l() const { return left << 6; }
-                        uint16_t r() const { return right << 6; } };
-    void unpack_y10msb_y10msb_from_y16i(byte* const dest[], const byte* source, int width, int height, int actual_size)
+                        // explanation of "return x << 6 | x >> 4" :
+                        // Since the data is received only in 10 bits, and the conversion is to 16 bits, 
+                        // the range moves from [0 : 2^10-1] to [0 : 2^16-1], so the values should be converted accordingly:
+                        // x is range [0 : 2^10-1] is converted to y = x * (2^16-1)/(2^10-1) approx= x * (64 + 1/16)
+                        // And x * (64 + 1/16) = x * 64 + x * 1/16 = x << 6 | x >> 4
+                        // This operation is done using shiftings to make it more efficient, and with a non-significant accuracy loss.
+                        uint16_t l() const { return left << 6 | left >> 4; }
+                        uint16_t r() const { return right << 6 | right >> 4; }
+    };
+    void unpack_y10msb_y10msb_from_y16i( uint8_t * const dest[], const uint8_t * source, int width, int height, int actual_size)
     {
         auto count = width * height;
 // CUDA TODO
@@ -36,7 +41,7 @@ namespace librealsense
             RS2_FORMAT_Y16, RS2_STREAM_INFRARED, RS2_EXTENSION_VIDEO_FRAME, 2)
     {}
 
-    void y16i_to_y10msby10msb::process_function(byte* const dest[], const byte* source, int width, int height, int actual_size, int input_size)
+    void y16i_to_y10msby10msb::process_function( uint8_t * const dest[], const uint8_t * source, int width, int height, int actual_size, int input_size)
     {
         unpack_y10msb_y10msb_from_y16i(dest, source, width, height, actual_size);
     }
